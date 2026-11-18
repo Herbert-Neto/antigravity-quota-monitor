@@ -21,9 +21,15 @@ Desenvolvido em **Go puro** utilizando apenas a biblioteca padrão e APIs nativa
 - **Antigravity CLI (`agy`)** instalado e autenticado (no `PATH` ou em `%LOCALAPPDATA%\agy\bin\agy.exe`)
 - **Go 1.26+** (apenas para compilar a partir do código-fonte)
 
-## Como compilar
+## Como baixar ou compilar
 
-### Executável final (GUI sem janela de terminal)
+### Baixar pronto (Windows)
+
+Acesse a aba **Releases** do repositório e baixe o arquivo `agy-quota.exe` (compilado automaticamente via GitHub Actions a partir do código-fonte).
+
+### Compilar a partir do código-fonte
+
+#### Executável final (GUI sem janela de terminal)
 
 ```powershell
 go build -ldflags="-H=windowsgui -s -w" -o agy-quota.exe .
