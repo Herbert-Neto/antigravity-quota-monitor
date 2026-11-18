@@ -19,6 +19,7 @@ const (
 	trayIconID     = 1
 	wmAppRefresh   = 0x8001 // WM_APP + 1
 	wmTrayCallback = 0x8002 // WM_APP + 2
+	wmAppQuit      = 0x8003 // WM_APP + 3
 
 	idmToggle      = 1001
 	idmPin         = 1002
@@ -107,6 +108,8 @@ func runGUI() {
 	classPtr, _ := syscall.UTF16PtrFromString(windowClass)
 	titlePtr, _ := syscall.UTF16PtrFromString(appTitle)
 	cursorArrow, _, _ := procLoadCursorW.Call(0, uintptr(idcArrow))
+
+	closeExistingInstance(classPtr)
 
 	wc := wndClassExW{
 		CbSize:        uint32(unsafe.Sizeof(wndClassExW{})),
@@ -294,6 +297,10 @@ func wndProc(hwnd uintptr, uMsg uint32, wParam, lParam uintptr) uintptr {
 		procInvalidateRect.Call(hwnd, 0, 0)
 		return 0
 
+	case wmAppQuit:
+		procDestroyWindow.Call(hwnd)
+		return 0
+
 	case wmTrayCallback:
 		switch uint32(lParam) {
 		case wmLButtonUp, wmLButtonDblClk:
@@ -329,9 +336,7 @@ func wndProc(hwnd uintptr, uMsg uint32, wParam, lParam uintptr) uintptr {
 			info := state.updateInfo
 			state.mu.Unlock()
 			if info != nil && info.HasUpdate && info.ReleaseURL != "" {
-				if err := OpenBrowserURL(info.ReleaseURL); err != nil {
-					setStatusNote("Erro ao abrir navegador", 6*time.Second)
-				}
+				openUpdateAndExit(hwnd, info)
 			} else {
 				triggerUpdateCheck(true)
 			}
@@ -441,11 +446,7 @@ func handleLButtonDown(hwnd uintptr, pt point) {
 		state.mu.Lock()
 		info := state.updateInfo
 		state.mu.Unlock()
-		if info != nil && info.HasUpdate && info.ReleaseURL != "" {
-			if err := OpenBrowserURL(info.ReleaseURL); err != nil {
-				setStatusNote("Erro ao abrir navegador", 6*time.Second)
-			}
-		}
+		openUpdateAndExit(hwnd, info)
 	default:
 		if inHeader {
 			state.mu.Lock()
@@ -472,6 +473,28 @@ func hitTestButtonsLocked(pt point) int {
 	default:
 		return btnNone
 	}
+}
+
+func closeExistingInstance(classPtr *uint16) {
+	for i := 0; i < 5; i++ {
+		prevHwnd, _, _ := procFindWindowW.Call(uintptr(unsafe.Pointer(classPtr)), 0)
+		if prevHwnd == 0 {
+			return
+		}
+		procPostMessageW.Call(prevHwnd, wmAppQuit, 0, 0)
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func openUpdateAndExit(hwnd uintptr, info *UpdateInfo) {
+	if info == nil || !info.HasUpdate || info.ReleaseURL == "" {
+		return
+	}
+	if err := OpenBrowserURL(info.ReleaseURL); err != nil {
+		setStatusNote("Erro ao abrir navegador", 6*time.Second)
+		return
+	}
+	procDestroyWindow.Call(hwnd)
 }
 
 func toggleWindowVisibility(hwnd uintptr) {

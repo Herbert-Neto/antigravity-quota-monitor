@@ -186,7 +186,7 @@ func runGUI() {
 	mux.HandleFunc("/api/refresh", handleRefresh)
 	mux.HandleFunc("/api/pin", handlePin)
 	mux.HandleFunc("/api/autostart", handleAutoStart)
-	mux.HandleFunc("/api/update-check", handleUpdateCheck)
+	mux.HandleFunc("/api/update-check", handleUpdateCheck(requestQuit))
 	mux.HandleFunc("/api/quit", handleQuit(requestQuit))
 
 	srv := &http.Server{Handler: mux}

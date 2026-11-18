@@ -97,22 +97,31 @@ func handleAutoStart(w http.ResponseWriter, r *http.Request) {
 	writeJSONState(w)
 }
 
-func handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	uState.mu.Lock()
-	info := uState.updateInfo
-	uState.mu.Unlock()
-	if info != nil && info.HasUpdate && info.ReleaseURL != "" {
-		if err := OpenBrowserURL(info.ReleaseURL); err != nil {
-			setUnixStatusNote("Erro ao abrir navegador", 6*time.Second)
+func handleUpdateCheck(requestQuit func()) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
 		}
-	} else {
+		uState.mu.Lock()
+		info := uState.updateInfo
+		uState.mu.Unlock()
+		if info != nil && info.HasUpdate && info.ReleaseURL != "" {
+			if err := OpenBrowserURL(info.ReleaseURL); err != nil {
+				setUnixStatusNote("Erro ao abrir navegador", 6*time.Second)
+				writeJSONState(w)
+				return
+			}
+			writeJSONState(w)
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				requestQuit()
+			}()
+			return
+		}
 		triggerUpdateCheck(true)
+		writeJSONState(w)
 	}
-	writeJSONState(w)
 }
 
 func handleQuit(requestQuit func()) http.HandlerFunc {
@@ -822,9 +831,15 @@ const unixCardHTML = `<!DOCTYPE html>
     });
 
     updateBtnEl.addEventListener('click', async () => {
+      const wasUpdateAvail = updateBtnEl.classList.contains('update-avail');
       try {
         const res = await fetch('/api/update-check', { method: 'POST' });
-        if (res.ok) renderState(await res.json());
+        if (res.ok) {
+          renderState(await res.json());
+          if (wasUpdateAvail) {
+            setTimeout(() => window.close(), 150);
+          }
+        }
       } catch (_) {}
     });
 

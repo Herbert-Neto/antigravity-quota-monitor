@@ -127,6 +127,7 @@ var (
 	procCreateIconIndirect            = user32.NewProc("CreateIconIndirect")
 	procDestroyIcon                   = user32.NewProc("DestroyIcon")
 	procDestroyWindow                 = user32.NewProc("DestroyWindow")
+	procFindWindowW                   = user32.NewProc("FindWindowW")
 
 	procCreateCompatibleDC     = gdi32.NewProc("CreateCompatibleDC")
 	procCreateCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
