@@ -49,9 +49,10 @@ type appState struct {
 	userMoved       bool
 	hoverBtn        int
 	tracking        bool
-	updateInfo      *UpdateInfo
-	checkingUpdate  bool
-	statusNote      string
+	updateInfo       *UpdateInfo
+	checkingUpdate   bool
+	updateRetryCount int
+	statusNote       string
 	statusNoteUntil time.Time
 
 	btnPinRect     rect
@@ -223,12 +224,17 @@ func triggerUpdateCheck(manual bool) {
 
 		state.mu.Lock()
 		state.checkingUpdate = false
+		var retryDelay time.Duration
 		if err != nil {
 			if manual {
 				state.statusNote = "Erro ao verificar atualização"
 				state.statusNoteUntil = time.Now().Add(6 * time.Second)
+			} else if state.updateInfo == nil && state.updateRetryCount < 3 {
+				retryDelay = time.Duration(30<<state.updateRetryCount) * time.Second
+				state.updateRetryCount++
 			}
 		} else {
+			state.updateRetryCount = 0
 			state.updateInfo = info
 			if info.HasUpdate {
 				state.statusNote = fmt.Sprintf("Nova versão disponível: %s", info.LatestVersion)
@@ -240,6 +246,12 @@ func triggerUpdateCheck(manual bool) {
 		}
 		h := state.hwnd
 		state.mu.Unlock()
+
+		if retryDelay > 0 {
+			time.AfterFunc(retryDelay, func() {
+				triggerUpdateCheck(false)
+			})
+		}
 
 		if h != 0 {
 			procPostMessageW.Call(h, wmAppRefresh, 0, 0)

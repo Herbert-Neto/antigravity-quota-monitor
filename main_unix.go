@@ -25,9 +25,10 @@ type unixState struct {
 	lastErr         string
 	lastUpdated     time.Time
 	pinned          bool
-	updateInfo      *UpdateInfo
-	checkingUpdate  bool
-	statusNote      string
+	updateInfo       *UpdateInfo
+	checkingUpdate   bool
+	updateRetryCount int
+	statusNote       string
 	statusNoteUntil time.Time
 }
 
@@ -122,12 +123,17 @@ func triggerUpdateCheck(manual bool) {
 
 		uState.mu.Lock()
 		uState.checkingUpdate = false
+		var retryDelay time.Duration
 		if err != nil {
 			if manual {
 				uState.statusNote = "Erro ao verificar atualização"
 				uState.statusNoteUntil = time.Now().Add(6 * time.Second)
+			} else if uState.updateInfo == nil && uState.updateRetryCount < 3 {
+				retryDelay = time.Duration(30<<uState.updateRetryCount) * time.Second
+				uState.updateRetryCount++
 			}
 		} else {
+			uState.updateRetryCount = 0
 			uState.updateInfo = info
 			if info.HasUpdate {
 				uState.statusNote = fmt.Sprintf("Nova versão disponível: %s", info.LatestVersion)
@@ -138,6 +144,12 @@ func triggerUpdateCheck(manual bool) {
 			}
 		}
 		uState.mu.Unlock()
+
+		if retryDelay > 0 {
+			time.AfterFunc(retryDelay, func() {
+				triggerUpdateCheck(false)
+			})
+		}
 	}()
 }
 
