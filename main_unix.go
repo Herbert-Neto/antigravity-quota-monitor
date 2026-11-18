@@ -19,12 +19,16 @@ import (
 const appTitle = "AGY Quota Monitor"
 
 type unixState struct {
-	mu          sync.Mutex
-	data        *UsageData
-	loading     bool
-	lastErr     string
-	lastUpdated time.Time
-	pinned      bool
+	mu              sync.Mutex
+	data            *UsageData
+	loading         bool
+	lastErr         string
+	lastUpdated     time.Time
+	pinned          bool
+	updateInfo      *UpdateInfo
+	checkingUpdate  bool
+	statusNote      string
+	statusNoteUntil time.Time
 }
 
 var uState = &unixState{
@@ -33,7 +37,11 @@ var uState = &unixState{
 
 func main() {
 	for _, arg := range os.Args[1:] {
-		if arg == "--test-cli" {
+		switch arg {
+		case "--version", "-v":
+			fmt.Printf("%s %s\n", appTitle, CurrentVersion())
+			os.Exit(0)
+		case "--test-cli":
 			os.Exit(runCLI())
 		}
 	}
@@ -85,10 +93,60 @@ func triggerFetch() {
 	}()
 }
 
+func setUnixStatusNote(note string, d time.Duration) {
+	uState.mu.Lock()
+	uState.statusNote = note
+	if note == "" || d <= 0 {
+		uState.statusNoteUntil = time.Time{}
+	} else {
+		uState.statusNoteUntil = time.Now().Add(d)
+	}
+	uState.mu.Unlock()
+}
+
+func triggerUpdateCheck(manual bool) {
+	uState.mu.Lock()
+	if uState.checkingUpdate {
+		uState.mu.Unlock()
+		return
+	}
+	uState.checkingUpdate = true
+	if manual {
+		uState.statusNote = "Verificando atualizações no GitHub..."
+		uState.statusNoteUntil = time.Now().Add(15 * time.Second)
+	}
+	uState.mu.Unlock()
+
+	go func() {
+		info, err := CheckForUpdates(context.Background())
+
+		uState.mu.Lock()
+		uState.checkingUpdate = false
+		if err != nil {
+			if manual {
+				uState.statusNote = "Erro ao verificar atualização"
+				uState.statusNoteUntil = time.Now().Add(6 * time.Second)
+			}
+		} else {
+			uState.updateInfo = info
+			if info.HasUpdate {
+				uState.statusNote = fmt.Sprintf("Nova versão disponível: %s", info.LatestVersion)
+				uState.statusNoteUntil = time.Now().Add(10 * time.Second)
+			} else if manual {
+				uState.statusNote = fmt.Sprintf("Você já está na versão mais recente (%s)", CurrentVersion())
+				uState.statusNoteUntil = time.Now().Add(6 * time.Second)
+			}
+		}
+		uState.mu.Unlock()
+	}()
+}
+
 func startUnixBackgroundLoop(ctx context.Context) {
 	go func() {
 		fetchTicker := time.NewTicker(3 * time.Minute)
+		updateTicker := time.NewTicker(6 * time.Hour)
 		defer fetchTicker.Stop()
+		defer updateTicker.Stop()
 
 		for {
 			select {
@@ -96,6 +154,8 @@ func startUnixBackgroundLoop(ctx context.Context) {
 				return
 			case <-fetchTicker.C:
 				triggerFetch()
+			case <-updateTicker.C:
+				triggerUpdateCheck(false)
 			}
 		}
 	}()
@@ -125,11 +185,14 @@ func runGUI() {
 	mux.HandleFunc("/api/state", handleState)
 	mux.HandleFunc("/api/refresh", handleRefresh)
 	mux.HandleFunc("/api/pin", handlePin)
+	mux.HandleFunc("/api/autostart", handleAutoStart)
+	mux.HandleFunc("/api/update-check", handleUpdateCheck)
 	mux.HandleFunc("/api/quit", handleQuit(requestQuit))
 
 	srv := &http.Server{Handler: mux}
 
 	triggerFetch()
+	triggerUpdateCheck(false)
 	startUnixBackgroundLoop(ctx)
 
 	go func() {

@@ -20,7 +20,9 @@ Desenvolvido em **Go puro** com `CGO_ENABLED=0` e **zero dependências externas*
   - **Flutuante:** oculta automaticamente para a bandeja no Windows ao clicar fora.
 - **Grupos e janelas monitorados:** lê a saída JSON de `agy --print /usage --output-format json` exibindo todos os grupos (`Gemini Models`, `Claude and GPT models`, `Gemini 4 Argon`), barras de progresso (`5h` e `weekly`) e contagem regressiva convertida para o horário local.
 - **Atualização eficiente:** consulta o `agy` em segundo plano a cada **3 minutos** (no Windows usando `CREATE_NO_WINDOW` para não piscar terminal) e atualiza as contagens regressivas a cada **15 segundos**.
-- **Atalhos da bandeja (Windows):** clique esquerdo alterna a exibição do card; clique direito abre o menu (*Mostrar / Ocultar*, *Modo Fixado*, *Atualizar Agora*, *Sair*).
+- **Atalhos da bandeja (Windows):** clique esquerdo alterna a exibição do card; clique direito abre o menu (*Mostrar / Ocultar*, *Modo Fixado*, *Iniciar com o Windows*, *Atualizar Agora*, *Verificar atualizações*, *Sair*).
+- **Iniciar com o Sistema (Windows, Linux e macOS):** opção integrada para registrar/remover a inicialização automática no login (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run` no Windows, `~/.config/autostart/agy-quota.desktop` no Linux e `~/Library/LaunchAgents/com.herbertneto.agy-quota.plist` no macOS).
+- **Verificador de Atualizações:** consulta a API oficial de Releases do GitHub ao iniciar, a cada 6 horas ou sob demanda pelo botão/menu, avisando quando há versão mais recente e abrindo a página de download no navegador.
 
 ## Pré-requisitos
 
@@ -98,16 +100,24 @@ go run . --test-cli
 go test -v ./...
 ```
 
-## Iniciar automaticamente com o Windows
+## Iniciar automaticamente com o sistema
 
-1. Pressione `Win + R`, digite `shell:startup` e pressione **Enter**.
-2. Crie um **atalho** para o arquivo executável (`agy-quota-windows-amd64.exe` ou `agy-quota.exe`) dentro da pasta aberta.
+Agora o próprio aplicativo possui controle integrado de inicialização no login:
+
+- **Windows:** clique com o botão direito no ícone da bandeja e marque **Iniciar com o Windows** (grava em `HKCU\...\Run` usando o caminho atual do executável).
+- **Linux / macOS:** clique no botão **Login: Off / On** no rodapé do card (cria/remove `~/.config/autostart/agy-quota.desktop` no Linux ou `~/Library/LaunchAgents/com.herbertneto.agy-quota.plist` no macOS).
+
+*(Alternativamente no Windows, você também pode colocar um atalho manualmente em `Win + R` -> `shell:startup`.)*
 
 ## Estrutura do projeto
 
 - `go.mod` — definição do módulo Go (sem dependências externas)
 - `quota.go` — execução multiplataforma do `agy`, parsing do JSON e formatação de contagens regressivas
-- `quota_test.go` — testes unitários multiplataforma do parser e formatação
+- `quota_test.go` — testes unitários multiplataforma do parser, semver/updater e builders de autostart
+- `updater.go` — comparação de versão semântica e verificador de novas releases via API do GitHub
+- `autostart_common.go` — helpers multiplataforma de caminho do executável e templates `.desktop` / `.plist`
+- `autostart_windows.go` — registro de inicialização automática (`advapi32.dll`) e abertura de URL no Windows (`//go:build windows`)
+- `autostart_unix.go` — inicialização automática (XDG / LaunchAgent) e abertura de URL no Linux e macOS (`//go:build !windows`)
 - `proc_windows.go` — configuração Win32 (`CREATE_NO_WINDOW`) para ocultar janela de console (`//go:build windows`)
 - `proc_unix.go` — stub de processo para Linux e macOS (`//go:build !windows`)
 - `main.go` — entrada Windows, estado da aplicação, loops de atualização e `wndProc` (`//go:build windows`)

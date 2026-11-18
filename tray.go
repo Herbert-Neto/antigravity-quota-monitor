@@ -19,6 +19,8 @@ func showTrayMenu(hwnd uintptr) {
 
 	state.mu.Lock()
 	pinned := state.pinned
+	updateInfo := state.updateInfo
+	checkingUpdate := state.checkingUpdate
 	state.mu.Unlock()
 
 	pinFlags := uint32(mfString)
@@ -28,9 +30,25 @@ func showTrayMenu(hwnd uintptr) {
 		pinFlags |= mfUnchecked
 	}
 
+	autoFlags := uint32(mfString)
+	if IsAutoStartEnabled() {
+		autoFlags |= mfChecked
+	} else {
+		autoFlags |= mfUnchecked
+	}
+
+	updateLabel := fmt.Sprintf("Verificar atualizações (%s)", CurrentVersion())
+	if updateInfo != nil && updateInfo.HasUpdate {
+		updateLabel = fmt.Sprintf("Nova versão disponível (%s) — Baixar", updateInfo.LatestVersion)
+	} else if checkingUpdate {
+		updateLabel = "Verificando atualizações..."
+	}
+
 	appendMenuItem(hMenu, mfString, idmToggle, "Mostrar / Ocultar")
 	appendMenuItem(hMenu, pinFlags, idmPin, "Modo Fixado")
+	appendMenuItem(hMenu, autoFlags, idmAutoStart, "Iniciar com o Windows")
 	appendMenuItem(hMenu, mfString, idmRefresh, "Atualizar Agora")
+	appendMenuItem(hMenu, mfString, idmCheckUpdate, updateLabel)
 	appendMenuItem(hMenu, mfSeparator, 0, "")
 	appendMenuItem(hMenu, mfString, idmExit, "Sair")
 

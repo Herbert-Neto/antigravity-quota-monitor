@@ -128,6 +128,9 @@ func renderCard(hdc uintptr, w, h int32) {
 	lastUpdated := state.lastUpdated
 	pinned := state.pinned
 	hoverBtn := state.hoverBtn
+	updateInfo := state.updateInfo
+	statusNote := state.statusNote
+	statusNoteUntil := state.statusNoteUntil
 	state.mu.Unlock()
 
 	s := func(v int32) int32 { return scaleDPI(v, dpi) }
@@ -318,9 +321,28 @@ func renderCard(hdc uintptr, w, h int32) {
 	// Footer status line
 	footerTop := h - footerH
 	fillSolidRect(hdc, rect{0, footerTop, w, footerTop + 1}, colBorder)
+
+	footerRight := w - s(14)
+	var updateRect rect
+	if updateInfo != nil && updateInfo.HasUpdate {
+		updateRect = rect{w - s(106), footerTop + s(4), w - s(12), h - s(4)}
+		footerRight = updateRect.Left - s(8)
+		updateBg := colBlue
+		if hoverBtn == btnUpdate {
+			updateBg = rgb(0x25, 0x63, 0xEB)
+		}
+		drawButton(hdc, updateRect, fmt.Sprintf("Baixar %s", updateInfo.LatestVersion), fontSmall, updateBg, colText, s(5))
+	}
+	state.mu.Lock()
+	state.btnUpdateRect = updateRect
+	state.mu.Unlock()
+
 	footerText := "Aguardando primeira leitura..."
 	footerColor := colMuted
 	switch {
+	case statusNote != "" && now.Before(statusNoteUntil):
+		footerText = statusNote
+		footerColor = colBlue
 	case loading:
 		footerText = "Atualizando cotas no agy..."
 		footerColor = colBlue
@@ -333,7 +355,7 @@ func renderCard(hdc uintptr, w, h int32) {
 	case !lastUpdated.IsZero():
 		footerText = fmt.Sprintf("Atualizado às %s  •  Auto a cada 3m", lastUpdated.Format("15:04:05"))
 	}
-	drawText(hdc, footerText, rect{s(14), footerTop, w - s(14), h}, fontSmall, footerColor, dtLeft|dtVCenter|dtSingleLine|dtEndEllipsis)
+	drawText(hdc, footerText, rect{s(14), footerTop, footerRight, h}, fontSmall, footerColor, dtLeft|dtVCenter|dtSingleLine|dtEndEllipsis)
 
 	// Outer 1px border frame
 	drawBorderRect(hdc, rect{0, 0, w, h}, colBorder)

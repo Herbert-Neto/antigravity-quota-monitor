@@ -25,16 +25,22 @@ type uiGroupResponse struct {
 }
 
 type uiStateResponse struct {
-	AppTitle      string            `json:"appTitle"`
-	StatusColor   string            `json:"statusColor"`
-	Loading       bool              `json:"loading"`
-	LastErr       string            `json:"lastErr"`
-	Pinned        bool              `json:"pinned"`
-	TitleSummary  string            `json:"titleSummary"`
-	FooterText    string            `json:"footerText"`
-	FooterColor   string            `json:"footerColor"`
-	DesiredHeight int               `json:"desiredHeight"`
-	Groups        []uiGroupResponse `json:"groups"`
+	AppTitle       string            `json:"appTitle"`
+	Version        string            `json:"version"`
+	StatusColor    string            `json:"statusColor"`
+	Loading        bool              `json:"loading"`
+	LastErr        string            `json:"lastErr"`
+	Pinned         bool              `json:"pinned"`
+	AutoStart      bool              `json:"autoStart"`
+	HasUpdate      bool              `json:"hasUpdate"`
+	LatestVersion  string            `json:"latestVersion"`
+	ReleaseURL     string            `json:"releaseURL"`
+	CheckingUpdate bool              `json:"checkingUpdate"`
+	TitleSummary   string            `json:"titleSummary"`
+	FooterText     string            `json:"footerText"`
+	FooterColor    string            `json:"footerColor"`
+	DesiredHeight  int               `json:"desiredHeight"`
+	Groups         []uiGroupResponse `json:"groups"`
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +81,40 @@ func handlePin(w http.ResponseWriter, r *http.Request) {
 	writeJSONState(w)
 }
 
+func handleAutoStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	enabled, err := ToggleAutoStart()
+	if err != nil {
+		setUnixStatusNote("Erro: "+err.Error(), 6*time.Second)
+	} else if enabled {
+		setUnixStatusNote("Início no login ativado", 5*time.Second)
+	} else {
+		setUnixStatusNote("Início no login desativado", 5*time.Second)
+	}
+	writeJSONState(w)
+}
+
+func handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	uState.mu.Lock()
+	info := uState.updateInfo
+	uState.mu.Unlock()
+	if info != nil && info.HasUpdate && info.ReleaseURL != "" {
+		if err := OpenBrowserURL(info.ReleaseURL); err != nil {
+			setUnixStatusNote("Erro ao abrir navegador", 6*time.Second)
+		}
+	} else {
+		triggerUpdateCheck(true)
+	}
+	writeJSONState(w)
+}
+
 func handleQuit(requestQuit func()) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -100,18 +140,30 @@ func buildUIState() uiStateResponse {
 	lastErr := uState.lastErr
 	lastUpdated := uState.lastUpdated
 	pinned := uState.pinned
+	updateInfo := uState.updateInfo
+	checkingUpdate := uState.checkingUpdate
+	statusNote := uState.statusNote
+	statusNoteUntil := uState.statusNoteUntil
 	uState.mu.Unlock()
 
 	now := time.Now()
 	resp := uiStateResponse{
-		AppTitle:      appTitle,
-		StatusColor:   statusHexColor(data, loading),
-		Loading:       loading,
-		LastErr:       lastErr,
-		Pinned:        pinned,
-		TitleSummary:  buildUnixTitleSummary(data, loading, lastErr),
-		DesiredHeight: calcUnixDesiredHeight(data),
-		Groups:        make([]uiGroupResponse, 0),
+		AppTitle:       appTitle,
+		Version:        CurrentVersion(),
+		StatusColor:    statusHexColor(data, loading),
+		Loading:        loading,
+		LastErr:        lastErr,
+		Pinned:         pinned,
+		AutoStart:      IsAutoStartEnabled(),
+		CheckingUpdate: checkingUpdate,
+		TitleSummary:   buildUnixTitleSummary(data, loading, lastErr),
+		DesiredHeight:  calcUnixDesiredHeight(data),
+		Groups:         make([]uiGroupResponse, 0),
+	}
+	if updateInfo != nil {
+		resp.HasUpdate = updateInfo.HasUpdate
+		resp.LatestVersion = updateInfo.LatestVersion
+		resp.ReleaseURL = updateInfo.ReleaseURL
 	}
 
 	if data != nil {
@@ -139,6 +191,9 @@ func buildUIState() uiStateResponse {
 	resp.FooterText = "Aguardando primeira leitura..."
 	resp.FooterColor = "#6F7B8F"
 	switch {
+	case statusNote != "" && now.Before(statusNoteUntil):
+		resp.FooterText = statusNote
+		resp.FooterColor = "#3B82F6"
 	case loading:
 		resp.FooterText = "Atualizando cotas no agy..."
 		resp.FooterColor = "#3B82F6"
@@ -484,14 +539,63 @@ const unixCardHTML = `<!DOCTYPE html>
     .footer {
       height: 32px;
       border-top: 1px solid #2E3646;
-      padding: 0 14px;
+      padding: 0 12px 0 14px;
       display: flex;
       align-items: center;
+      justify-content: space-between;
+      gap: 8px;
       font-size: 12px;
       color: #6F7B8F;
+    }
+
+    .footer-text {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .footer-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .btn-footer {
+      height: 20px;
+      padding: 0 7px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 500;
+      color: #9BA6B8;
+      background: #262D3B;
+    }
+
+    .btn-footer:hover {
+      color: #F3F6FC;
+      background: #333C4F;
+    }
+
+    .btn-footer.active {
+      background: #3B82F6;
+      color: #F3F6FC;
+    }
+
+    .btn-footer.active:hover {
+      background: #2563EB;
+    }
+
+    .btn-footer.update-avail {
+      background: #2ECC71;
+      color: #14171F;
+      font-weight: 600;
+    }
+
+    .btn-footer.update-avail:hover {
+      background: #27AE60;
+      color: #14171F;
     }
   </style>
 </head>
@@ -512,7 +616,13 @@ const unixCardHTML = `<!DOCTYPE html>
       <div class="empty-card">Carregando cotas do agy...</div>
     </main>
 
-    <footer id="footer" class="footer">Aguardando primeira leitura...</footer>
+    <footer id="footer" class="footer">
+      <span id="footerText" class="footer-text">Aguardando primeira leitura...</span>
+      <div class="footer-actions">
+        <button id="autoStartBtn" class="btn-footer" type="button" title="Iniciar automaticamente no login">Login: Off</button>
+        <button id="updateBtn" class="btn-footer" type="button" title="Verificar atualizações no GitHub">v1.2.0</button>
+      </div>
+    </footer>
   </div>
 
   <script>
@@ -522,7 +632,9 @@ const unixCardHTML = `<!DOCTYPE html>
     const hideBtnEl = document.getElementById('hideBtn');
     const closeBtnEl = document.getElementById('closeBtn');
     const bodyEl = document.getElementById('body');
-    const footerEl = document.getElementById('footer');
+    const footerTextEl = document.getElementById('footerText');
+    const autoStartBtnEl = document.getElementById('autoStartBtn');
+    const updateBtnEl = document.getElementById('updateBtn');
     const faviconEl = document.getElementById('favicon');
 
     let lastFaviconColor = '';
@@ -566,8 +678,25 @@ const unixCardHTML = `<!DOCTYPE html>
 
       refreshBtnEl.textContent = s.loading ? '...' : 'Atualizar';
 
-      footerEl.textContent = s.footerText || '';
-      footerEl.style.color = s.footerColor || '#6F7B8F';
+      footerTextEl.textContent = s.footerText || '';
+      footerTextEl.style.color = s.footerColor || '#6F7B8F';
+
+      autoStartBtnEl.textContent = s.autoStart ? 'Login: On' : 'Login: Off';
+      autoStartBtnEl.classList.toggle('active', !!s.autoStart);
+
+      if (s.checkingUpdate) {
+        updateBtnEl.textContent = '...';
+        updateBtnEl.classList.remove('update-avail');
+        updateBtnEl.title = 'Verificando atualizações no GitHub...';
+      } else if (s.hasUpdate && s.latestVersion) {
+        updateBtnEl.textContent = '↑ ' + s.latestVersion;
+        updateBtnEl.classList.add('update-avail');
+        updateBtnEl.title = 'Nova versão disponível — Clique para abrir no GitHub';
+      } else {
+        updateBtnEl.textContent = s.version || 'v1.2.0';
+        updateBtnEl.classList.remove('update-avail');
+        updateBtnEl.title = 'Verificar atualizações no GitHub';
+      }
 
       bodyEl.innerHTML = '';
       if (!s.groups || s.groups.length === 0) {
@@ -649,7 +778,7 @@ const unixCardHTML = `<!DOCTYPE html>
         } catch (_) {}
       }
 
-      if (s.loading) {
+      if (s.loading || s.checkingUpdate) {
         if (!loadingTimer) {
           loadingTimer = setTimeout(() => {
             loadingTimer = null;
@@ -681,6 +810,20 @@ const unixCardHTML = `<!DOCTYPE html>
     refreshBtnEl.addEventListener('click', async () => {
       try {
         const res = await fetch('/api/refresh', { method: 'POST' });
+        if (res.ok) renderState(await res.json());
+      } catch (_) {}
+    });
+
+    autoStartBtnEl.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/autostart', { method: 'POST' });
+        if (res.ok) renderState(await res.json());
+      } catch (_) {}
+    });
+
+    updateBtnEl.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/update-check', { method: 'POST' });
         if (res.ok) renderState(await res.json());
       } catch (_) {}
     });

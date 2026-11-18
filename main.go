@@ -20,36 +20,44 @@ const (
 	wmAppRefresh   = 0x8001 // WM_APP + 1
 	wmTrayCallback = 0x8002 // WM_APP + 2
 
-	idmToggle  = 1001
-	idmPin     = 1002
-	idmRefresh = 1003
-	idmExit    = 1004
+	idmToggle      = 1001
+	idmPin         = 1002
+	idmRefresh     = 1003
+	idmExit        = 1004
+	idmAutoStart   = 1005
+	idmCheckUpdate = 1006
 
 	btnNone = iota
 	btnPin
 	btnRefresh
 	btnHide
 	btnClose
+	btnUpdate
 )
 
 type appState struct {
-	mu          sync.Mutex
-	hwnd        uintptr
-	hTrayIcon   uintptr
-	dpi         int32
-	data        *UsageData
-	loading     bool
-	lastErr     string
-	lastUpdated time.Time
-	pinned      bool
-	userMoved   bool
-	hoverBtn    int
-	tracking    bool
+	mu              sync.Mutex
+	hwnd            uintptr
+	hTrayIcon       uintptr
+	dpi             int32
+	data            *UsageData
+	loading         bool
+	lastErr         string
+	lastUpdated     time.Time
+	pinned          bool
+	userMoved       bool
+	hoverBtn        int
+	tracking        bool
+	updateInfo      *UpdateInfo
+	checkingUpdate  bool
+	statusNote      string
+	statusNoteUntil time.Time
 
 	btnPinRect     rect
 	btnRefreshRect rect
 	btnHideRect    rect
 	btnCloseRect   rect
+	btnUpdateRect  rect
 	headerRect     rect
 }
 
@@ -60,7 +68,11 @@ var state = &appState{
 
 func main() {
 	for _, arg := range os.Args[1:] {
-		if arg == "--test-cli" {
+		switch arg {
+		case "--version", "-v":
+			fmt.Printf("%s %s\n", appTitle, CurrentVersion())
+			os.Exit(0)
+		case "--test-cli":
 			os.Exit(runCLI())
 		}
 	}
@@ -133,6 +145,7 @@ func runGUI() {
 
 	// Initial background fetch + periodic refreshers
 	triggerFetch()
+	triggerUpdateCheck(false)
 	startBackgroundLoops(hwnd)
 
 	var m msg
@@ -150,8 +163,10 @@ func startBackgroundLoops(hwnd uintptr) {
 	go func() {
 		fetchTicker := time.NewTicker(3 * time.Minute)
 		countdownTicker := time.NewTicker(15 * time.Second)
+		updateTicker := time.NewTicker(6 * time.Hour)
 		defer fetchTicker.Stop()
 		defer countdownTicker.Stop()
+		defer updateTicker.Stop()
 
 		for {
 			select {
@@ -159,7 +174,72 @@ func startBackgroundLoops(hwnd uintptr) {
 				triggerFetch()
 			case <-countdownTicker.C:
 				procPostMessageW.Call(hwnd, wmAppRefresh, 0, 0)
+			case <-updateTicker.C:
+				triggerUpdateCheck(false)
 			}
+		}
+	}()
+}
+
+func setStatusNote(note string, d time.Duration) {
+	state.mu.Lock()
+	state.statusNote = note
+	if note == "" || d <= 0 {
+		state.statusNoteUntil = time.Time{}
+	} else {
+		state.statusNoteUntil = time.Now().Add(d)
+	}
+	h := state.hwnd
+	state.mu.Unlock()
+
+	if h != 0 {
+		procPostMessageW.Call(h, wmAppRefresh, 0, 0)
+	}
+}
+
+func triggerUpdateCheck(manual bool) {
+	state.mu.Lock()
+	if state.checkingUpdate {
+		state.mu.Unlock()
+		return
+	}
+	state.checkingUpdate = true
+	if manual {
+		state.statusNote = "Verificando atualizações no GitHub..."
+		state.statusNoteUntil = time.Now().Add(15 * time.Second)
+	}
+	hwnd := state.hwnd
+	state.mu.Unlock()
+
+	if hwnd != 0 && manual {
+		procPostMessageW.Call(hwnd, wmAppRefresh, 0, 0)
+	}
+
+	go func() {
+		info, err := CheckForUpdates(context.Background())
+
+		state.mu.Lock()
+		state.checkingUpdate = false
+		if err != nil {
+			if manual {
+				state.statusNote = "Erro ao verificar atualização"
+				state.statusNoteUntil = time.Now().Add(6 * time.Second)
+			}
+		} else {
+			state.updateInfo = info
+			if info.HasUpdate {
+				state.statusNote = fmt.Sprintf("Nova versão disponível: %s", info.LatestVersion)
+				state.statusNoteUntil = time.Now().Add(10 * time.Second)
+			} else if manual {
+				state.statusNote = fmt.Sprintf("Você já está na versão mais recente (%s)", CurrentVersion())
+				state.statusNoteUntil = time.Now().Add(6 * time.Second)
+			}
+		}
+		h := state.hwnd
+		state.mu.Unlock()
+
+		if h != 0 {
+			procPostMessageW.Call(h, wmAppRefresh, 0, 0)
 		}
 	}()
 }
@@ -232,8 +312,29 @@ func wndProc(hwnd uintptr, uMsg uint32, wParam, lParam uintptr) uintptr {
 			state.pinned = !state.pinned
 			state.mu.Unlock()
 			procInvalidateRect.Call(hwnd, 0, 0)
+		case idmAutoStart:
+			enabled, err := ToggleAutoStart()
+			if err != nil {
+				setStatusNote("Erro no início automático: "+err.Error(), 6*time.Second)
+			} else if enabled {
+				setStatusNote("Início com o Windows ativado", 5*time.Second)
+			} else {
+				setStatusNote("Início com o Windows desativado", 5*time.Second)
+			}
+			procInvalidateRect.Call(hwnd, 0, 0)
 		case idmRefresh:
 			triggerFetch()
+		case idmCheckUpdate:
+			state.mu.Lock()
+			info := state.updateInfo
+			state.mu.Unlock()
+			if info != nil && info.HasUpdate && info.ReleaseURL != "" {
+				if err := OpenBrowserURL(info.ReleaseURL); err != nil {
+					setStatusNote("Erro ao abrir navegador", 6*time.Second)
+				}
+			} else {
+				triggerUpdateCheck(true)
+			}
 		case idmExit:
 			procDestroyWindow.Call(hwnd)
 		}
@@ -336,6 +437,15 @@ func handleLButtonDown(hwnd uintptr, pt point) {
 		procShowWindow.Call(hwnd, swHide)
 	case btnClose:
 		procDestroyWindow.Call(hwnd)
+	case btnUpdate:
+		state.mu.Lock()
+		info := state.updateInfo
+		state.mu.Unlock()
+		if info != nil && info.HasUpdate && info.ReleaseURL != "" {
+			if err := OpenBrowserURL(info.ReleaseURL); err != nil {
+				setStatusNote("Erro ao abrir navegador", 6*time.Second)
+			}
+		}
 	default:
 		if inHeader {
 			state.mu.Lock()
@@ -357,6 +467,8 @@ func hitTestButtonsLocked(pt point) int {
 		return btnRefresh
 	case ptInRect(pt, state.btnPinRect):
 		return btnPin
+	case ptInRect(pt, state.btnUpdateRect):
+		return btnUpdate
 	default:
 		return btnNone
 	}

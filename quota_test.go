@@ -1,7 +1,12 @@
 package main
 
 import (
+	"context"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -161,5 +166,83 @@ func TestFriendlyBucketNameAndSubtitle(t *testing.T) {
 		if got := ShortGroupSubtitle(tc.group); got != tc.want {
 			t.Fatalf("ShortGroupSubtitle(%q) = %q, want %q", tc.group.Description, got, tc.want)
 		}
+	}
+}
+
+func TestCompareSemver(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want int
+	}{
+		{"v1.2.0", "1.2.0", 0},
+		{"v1.2.0", "v1.1.0", 1},
+		{"v1.10.0", "v1.2.0", 1},
+		{"v1.1.0", "v1.2.0", -1},
+		{"v2.0.0", "v1.9.9", 1},
+		{"v1.2.0", "v1.2.0-beta.1", 1},
+		{"v1.2.0-beta.1", "v1.2.0", -1},
+		{"v1.2.0+build123", "v1.2.0", 0},
+		{"dev", "v1.2.0", 0},
+		{"invalid", "v1.2.0", 0},
+	}
+
+	for _, tc := range tests {
+		if got := CompareSemver(tc.a, tc.b); got != tc.want {
+			t.Fatalf("CompareSemver(%q, %q) = %d, want %d", tc.a, tc.b, got, tc.want)
+		}
+	}
+}
+
+func TestCheckForUpdatesFromURL(t *testing.T) {
+	releaseURL := "https://github.com/Herbert-Neto/antigravity-quota-monitor/releases/tag/v1.3.0"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"tag_name":"v1.3.0","html_url":"` + releaseURL + `","draft":false,"prerelease":false}`))
+	}))
+	defer srv.Close()
+
+	info, err := checkForUpdatesFromURL(context.Background(), srv.URL, "v1.2.0")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !info.HasUpdate {
+		t.Fatalf("expected HasUpdate=true for v1.2.0 -> v1.3.0")
+	}
+	if info.LatestVersion != "v1.3.0" || info.ReleaseURL != releaseURL {
+		t.Fatalf("unexpected UpdateInfo: %+v", info)
+	}
+
+	same, err := checkForUpdatesFromURL(context.Background(), srv.URL, "v1.3.0")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if same.HasUpdate {
+		t.Fatalf("expected HasUpdate=false when already on v1.3.0")
+	}
+}
+
+func TestAutoStartBuilders(t *testing.T) {
+	desktop := buildDesktopEntry("/usr/local/bin/agy-quota")
+	if !strings.Contains(desktop, "[Desktop Entry]") ||
+		!strings.Contains(desktop, `Exec="/usr/local/bin/agy-quota"`) ||
+		!strings.Contains(desktop, "X-GNOME-Autostart-enabled=true") {
+		t.Fatalf("unexpected desktop entry:\n%s", desktop)
+	}
+
+	plist := buildLaunchAgentPlist("/Applications/agy-quota & test")
+	if !strings.Contains(plist, macLaunchAgentLabel) ||
+		!strings.Contains(plist, "/Applications/agy-quota &amp; test") ||
+		!strings.Contains(plist, "<key>RunAtLoad</key>") {
+		t.Fatalf("unexpected plist:\n%s", plist)
+	}
+
+	tmpBin := filepath.Join(os.TempDir(), "go-build1234", "b001", "exe", "agy-quota")
+	if !isTemporaryGoRunBinary(tmpBin) {
+		t.Fatalf("expected temporary binary path %q to be detected", tmpBin)
+	}
+
+	permBin := filepath.Join(string(filepath.Separator), "opt", "agy-quota", "agy-quota")
+	if isTemporaryGoRunBinary(permBin) {
+		t.Fatalf("expected permanent path %q not to be flagged as temporary", permBin)
 	}
 }
