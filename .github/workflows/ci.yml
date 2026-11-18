@@ -11,7 +11,11 @@ permissions:
 
 jobs:
   test-and-build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     env:
       CGO_ENABLED: "0"
     steps:
@@ -30,5 +34,10 @@ jobs:
       - name: Test
         run: go test -v ./...
 
-      - name: Build
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
         run: go build -trimpath -ldflags="-H=windowsgui -s -w" -o agy-quota.exe .
+
+      - name: Build (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: go build -trimpath -ldflags="-s -w" -o agy-quota .

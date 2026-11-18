@@ -1,5 +1,3 @@
-//go:build windows
-
 package main
 
 import (
@@ -12,11 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
-
-const createNoWindow = 0x08000000
 
 // UsageOutput represents the top-level JSON returned by `agy --print /usage --output-format json`.
 type UsageOutput struct {
@@ -64,6 +59,27 @@ func FindAgyExecutable() string {
 			return candidate
 		}
 	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		homeCandidates := []string{
+			filepath.Join(home, ".local", "bin", "agy"),
+			filepath.Join(home, ".agy", "bin", "agy"),
+			filepath.Join(home, ".gemini", "antigravity-cli", "bin", "agy"),
+		}
+		for _, candidate := range homeCandidates {
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+	}
+	unixCandidates := []string{
+		"/opt/homebrew/bin/agy",
+		"/usr/local/bin/agy",
+	}
+	for _, candidate := range unixCandidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
 	return "agy"
 }
 
@@ -75,10 +91,7 @@ func FetchQuota(ctx context.Context) (*UsageData, error) {
 
 	agyPath := FindAgyExecutable()
 	cmd := exec.CommandContext(ctx, agyPath, "--print", "/usage", "--output-format", "json")
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: createNoWindow,
-	}
+	configureHideWindow(cmd)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
