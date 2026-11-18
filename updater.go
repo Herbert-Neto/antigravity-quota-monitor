@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -71,7 +73,7 @@ func checkForUpdatesFromURL(ctx context.Context, apiURL, currentVer string) (*Up
 	}
 
 	var payload githubReleasePayload
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
 		return nil, fmt.Errorf("erro ao ler resposta do GitHub: %w", err)
 	}
 
@@ -163,5 +165,14 @@ func parseSemver(raw string) (semverParts, bool) {
 }
 
 func isAllowedBrowserURL(rawURL string) bool {
-	return strings.HasPrefix(rawURL, "https://") || strings.HasPrefix(rawURL, "http://")
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" || strings.ContainsAny(trimmed, "\r\n\x00") {
+		return false
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil || u.Scheme != "https" || u.User != nil {
+		return false
+	}
+	host := u.Hostname()
+	return strings.EqualFold(host, "github.com") || strings.EqualFold(host, "www.github.com")
 }

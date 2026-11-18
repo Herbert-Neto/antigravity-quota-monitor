@@ -30,6 +30,9 @@ func resolveExecutablePath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("caminho do executavel invalido: %w", err)
 	}
+	if strings.ContainsAny(absPath, "\r\n\x00") {
+		return "", errors.New("caminho do executavel contem caracteres invalidos")
+	}
 	if isTemporaryGoRunBinary(absPath) {
 		return "", errors.New("inicio automatico indisponivel via 'go run'; compile o binario primeiro")
 	}
@@ -55,7 +58,16 @@ func isTemporaryGoRunBinary(execPath string) bool {
 }
 
 func buildDesktopEntry(execPath string) string {
-	escapedExec := strings.ReplaceAll(execPath, `"`, `\"`)
+	escapedExec := strings.NewReplacer(
+		"\r", "",
+		"\n", "",
+		"\x00", "",
+		`\`, `\\`,
+		`"`, `\"`,
+		`$`, `\$`,
+		"`", "\\`",
+		`%`, `%%`,
+	).Replace(execPath)
 	return fmt.Sprintf(`[Desktop Entry]
 Type=Application
 Version=1.0

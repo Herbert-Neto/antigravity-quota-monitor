@@ -43,14 +43,20 @@ type uiStateResponse struct {
 	Groups         []uiGroupResponse `json:"groups"`
 }
 
-func handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
+func handleIndex(token string) http.HandlerFunc {
+	html := strings.Replace(unixCardHTML, "__AGY_SESSION_TOKEN__", token, 1)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'self'")
+		_, _ = w.Write([]byte(html))
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(unixCardHTML))
 }
 
 func handleState(w http.ResponseWriter, r *http.Request) {
@@ -635,6 +641,7 @@ const unixCardHTML = `<!DOCTYPE html>
   </div>
 
   <script>
+    const sessionToken = '__AGY_SESSION_TOKEN__';
     const statusDotEl = document.getElementById('statusDot');
     const pinBtnEl = document.getElementById('pinBtn');
     const refreshBtnEl = document.getElementById('refreshBtn');
@@ -800,9 +807,17 @@ const unixCardHTML = `<!DOCTYPE html>
       }
     }
 
+    async function apiFetch(path, opts = {}) {
+      return fetch(path, {
+        ...opts,
+        cache: 'no-store',
+        headers: { ...(opts.headers || {}), 'X-AGY-Token': sessionToken }
+      });
+    }
+
     async function fetchState() {
       try {
-        const res = await fetch('/api/state', { cache: 'no-store' });
+        const res = await apiFetch('/api/state');
         if (!res.ok) return;
         const data = await res.json();
         renderState(data);
@@ -811,21 +826,21 @@ const unixCardHTML = `<!DOCTYPE html>
 
     pinBtnEl.addEventListener('click', async () => {
       try {
-        const res = await fetch('/api/pin', { method: 'POST' });
+        const res = await apiFetch('/api/pin', { method: 'POST' });
         if (res.ok) renderState(await res.json());
       } catch (_) {}
     });
 
     refreshBtnEl.addEventListener('click', async () => {
       try {
-        const res = await fetch('/api/refresh', { method: 'POST' });
+        const res = await apiFetch('/api/refresh', { method: 'POST' });
         if (res.ok) renderState(await res.json());
       } catch (_) {}
     });
 
     autoStartBtnEl.addEventListener('click', async () => {
       try {
-        const res = await fetch('/api/autostart', { method: 'POST' });
+        const res = await apiFetch('/api/autostart', { method: 'POST' });
         if (res.ok) renderState(await res.json());
       } catch (_) {}
     });
@@ -833,7 +848,7 @@ const unixCardHTML = `<!DOCTYPE html>
     updateBtnEl.addEventListener('click', async () => {
       const wasUpdateAvail = updateBtnEl.classList.contains('update-avail');
       try {
-        const res = await fetch('/api/update-check', { method: 'POST' });
+        const res = await apiFetch('/api/update-check', { method: 'POST' });
         if (res.ok) {
           renderState(await res.json());
           if (wasUpdateAvail) {
@@ -849,7 +864,7 @@ const unixCardHTML = `<!DOCTYPE html>
 
     closeBtnEl.addEventListener('click', async () => {
       try {
-        await fetch('/api/quit', { method: 'POST' });
+        await apiFetch('/api/quit', { method: 'POST' });
       } catch (_) {}
       window.close();
     });

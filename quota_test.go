@@ -245,4 +245,32 @@ func TestAutoStartBuilders(t *testing.T) {
 	if isTemporaryGoRunBinary(permBin) {
 		t.Fatalf("expected permanent path %q not to be flagged as temporary", permBin)
 	}
+
+	escapedDesktop := buildDesktopEntry("/opt/100%/agy\n\"test\"")
+	if !strings.Contains(escapedDesktop, `Exec="/opt/100%%/agy\"test\""`) {
+		t.Fatalf("expected %% and quote/newline sanitization in desktop entry:\n%s", escapedDesktop)
+	}
+}
+
+func TestIsAllowedBrowserURL(t *testing.T) {
+	tests := []struct {
+		url  string
+		want bool
+	}{
+		{"https://github.com/Herbert-Neto/antigravity-quota-monitor/releases/tag/v1.2.0", true},
+		{"https://www.github.com/Herbert-Neto/antigravity-quota-monitor/releases", true},
+		{"http://github.com/Herbert-Neto/antigravity-quota-monitor/releases", false},
+		{"https://evil.example.com/release", false},
+		{"javascript:alert(1)", false},
+		{"file:///C:/Windows/System32/cmd.exe", false},
+		{"https://user:pass@github.com/repo", false},
+		{"https://github.com/repo\ncmd", false},
+		{"", false},
+	}
+
+	for _, tc := range tests {
+		if got := isAllowedBrowserURL(tc.url); got != tc.want {
+			t.Fatalf("isAllowedBrowserURL(%q) = %v, want %v", tc.url, got, tc.want)
+		}
+	}
 }

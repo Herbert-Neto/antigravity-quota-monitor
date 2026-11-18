@@ -59,7 +59,7 @@ func SetAutoStart(enabled bool) error {
 		return err
 	}
 
-	if mkErr := os.MkdirAll(filepath.Dir(p), 0755); mkErr != nil {
+	if mkErr := os.MkdirAll(filepath.Dir(p), 0700); mkErr != nil {
 		return fmt.Errorf("erro ao criar diretorio de autostart: %w", mkErr)
 	}
 
@@ -68,7 +68,7 @@ func SetAutoStart(enabled bool) error {
 		content = buildLaunchAgentPlist(exePath)
 	}
 
-	if wrErr := os.WriteFile(p, []byte(content), 0644); wrErr != nil {
+	if wrErr := os.WriteFile(p, []byte(content), 0600); wrErr != nil {
 		return fmt.Errorf("erro ao gravar arquivo de autostart: %w", wrErr)
 	}
 	return nil

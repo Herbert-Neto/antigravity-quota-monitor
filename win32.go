@@ -82,6 +82,7 @@ const (
 
 	dwmwaWindowCornerPreference = 33
 	dwmwcpRound                 = 2
+	loadLibrarySearchSystem32   = 0x00000800
 )
 
 var (
@@ -89,7 +90,6 @@ var (
 	gdi32    = syscall.NewLazyDLL("gdi32.dll")
 	shell32  = syscall.NewLazyDLL("shell32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
-	dwmapi   = syscall.NewLazyDLL("dwmapi.dll")
 
 	procSetProcessDpiAwarenessContext = user32.NewProc("SetProcessDpiAwarenessContext")
 	procSetProcessDPIAware            = user32.NewProc("SetProcessDPIAware")
@@ -145,9 +145,10 @@ var (
 	procSetTextColor           = gdi32.NewProc("SetTextColor")
 	procCreateFontW            = gdi32.NewProc("CreateFontW")
 
-	procShellNotifyIconW   = shell32.NewProc("Shell_NotifyIconW")
-	procGetModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
-	procDwmSetWindowAttrib = dwmapi.NewProc("DwmSetWindowAttribute")
+	procShellNotifyIconW = shell32.NewProc("Shell_NotifyIconW")
+	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
+	procLoadLibraryExW   = kernel32.NewProc("LoadLibraryExW")
+	procGetProcAddress   = kernel32.NewProc("GetProcAddress")
 )
 
 type point struct {
@@ -319,8 +320,24 @@ func createUIFont(heightPx, weight int32, face string) uintptr {
 }
 
 func applyRoundedCorners(hwnd uintptr) {
+	dllPtr, err := syscall.UTF16PtrFromString("dwmapi.dll")
+	if err != nil {
+		return
+	}
+	hMod, _, _ := procLoadLibraryExW.Call(uintptr(unsafe.Pointer(dllPtr)), 0, loadLibrarySearchSystem32)
+	if hMod == 0 {
+		return
+	}
+	procNamePtr, err := syscall.BytePtrFromString("DwmSetWindowAttribute")
+	if err != nil {
+		return
+	}
+	addr, _, _ := procGetProcAddress.Call(hMod, uintptr(unsafe.Pointer(procNamePtr)))
+	if addr == 0 {
+		return
+	}
 	pref := uint32(dwmwcpRound)
-	procDwmSetWindowAttrib.Call(hwnd, dwmwaWindowCornerPreference, uintptr(unsafe.Pointer(&pref)), unsafe.Sizeof(pref))
+	syscall.SyscallN(addr, hwnd, dwmwaWindowCornerPreference, uintptr(unsafe.Pointer(&pref)), unsafe.Sizeof(pref))
 }
 
 func enableDPIAwareness() {

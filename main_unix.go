@@ -4,6 +4,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
@@ -192,16 +195,24 @@ func runGUI() {
 		})
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", handleIndex)
-	mux.HandleFunc("/api/state", handleState)
-	mux.HandleFunc("/api/refresh", handleRefresh)
-	mux.HandleFunc("/api/pin", handlePin)
-	mux.HandleFunc("/api/autostart", handleAutoStart)
-	mux.HandleFunc("/api/update-check", handleUpdateCheck(requestQuit))
-	mux.HandleFunc("/api/quit", handleQuit(requestQuit))
+	sessionToken := generateSessionToken()
 
-	srv := &http.Server{Handler: mux}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", handleIndex(sessionToken))
+	mux.HandleFunc("/api/state", requireToken(sessionToken, handleState))
+	mux.HandleFunc("/api/refresh", requireToken(sessionToken, handleRefresh))
+	mux.HandleFunc("/api/pin", requireToken(sessionToken, handlePin))
+	mux.HandleFunc("/api/autostart", requireToken(sessionToken, handleAutoStart))
+	mux.HandleFunc("/api/update-check", requireToken(sessionToken, handleUpdateCheck(requestQuit)))
+	mux.HandleFunc("/api/quit", requireToken(sessionToken, handleQuit(requestQuit)))
+
+	srv := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 
 	triggerFetch()
 	triggerUpdateCheck(false)
@@ -232,6 +243,26 @@ func runGUI() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer shutdownCancel()
 	_ = srv.Shutdown(shutdownCtx)
+}
+
+func generateSessionToken() string {
+	var buf [32]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf[:])
+}
+
+func requireToken(token string, next http.HandlerFunc) http.HandlerFunc {
+	expected := []byte(token)
+	return func(w http.ResponseWriter, r *http.Request) {
+		provided := r.Header.Get("X-AGY-Token")
+		if subtle.ConstantTimeCompare([]byte(provided), expected) != 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	}
 }
 
 func openAppWindow(url string) error {
