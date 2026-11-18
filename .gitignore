@@ -1,0 +1,6 @@
+# Binários compilados
+*.exe
+
+# Caches locais temporários do Go
+.go-cache/
+.go-path/
