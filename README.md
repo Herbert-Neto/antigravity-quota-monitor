@@ -34,7 +34,7 @@ Desenvolvido em **Go puro** com `CGO_ENABLED=0` e **zero dependências externas*
 
 Acesse a aba **Releases** do repositório e baixe o binário correspondente ao seu sistema (todos gerados automaticamente via GitHub Actions com checksums em `SHA256SUMS.txt`):
 
-- **Windows (x64):** `agy-quota.exe` (ou `agy-quota-windows-amd64.exe`)
+- **Windows (x64):** `agy-quota-windows-amd64.exe`
 - **Linux (x64 / ARM64):** `agy-quota-linux-amd64` / `agy-quota-linux-arm64`
 - **macOS (Intel / Apple Silicon):** `agy-quota-darwin-amd64` / `agy-quota-darwin-arm64`
 
@@ -101,7 +101,7 @@ go test -v ./...
 ## Iniciar automaticamente com o Windows
 
 1. Pressione `Win + R`, digite `shell:startup` e pressione **Enter**.
-2. Crie um **atalho** para o arquivo `agy-quota.exe` dentro da pasta aberta.
+2. Crie um **atalho** para o arquivo executável (`agy-quota-windows-amd64.exe` ou `agy-quota.exe`) dentro da pasta aberta.
 
 ## Estrutura do projeto
 
