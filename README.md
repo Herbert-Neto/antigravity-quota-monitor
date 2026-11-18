@@ -1,5 +1,10 @@
 # AGY Quota Monitor
 
+[![CI](https://github.com/Herbert-Neto/antigravity-quota-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/Herbert-Neto/antigravity-quota-monitor/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Herbert-Neto/antigravity-quota-monitor)](https://github.com/Herbert-Neto/antigravity-quota-monitor/releases)
+![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Widget leve de bandeja do sistema (*System Tray*) e painel flutuante para Windows que monitora as cotas de uso dos modelos no **Google Antigravity CLI (`agy`)**.
 
 Desenvolvido em **Go puro** utilizando apenas a biblioteca padrão e APIs nativas do Windows (`user32`, `gdi32`, `shell32`, `dwmapi`), sem dependências externas, sem CGO e sem consumo de WebView/Electron.
@@ -50,6 +55,12 @@ go build -o agy-quota.exe .
 .\agy-quota.exe --test-cli
 ```
 
+### Executar testes unitários
+
+```powershell
+go test -v ./...
+```
+
 ## Iniciar automaticamente com o Windows
 
 1. Pressione `Win + R`, digite `shell:startup` e pressione **Enter**.
@@ -58,5 +69,13 @@ go build -o agy-quota.exe .
 ## Estrutura do projeto
 
 - `go.mod` — definição do módulo Go
+- `main.go` — entrada do programa, estado da aplicação, loops de atualização e tratamento de eventos (`wndProc`)
+- `ui.go` — cálculo de layout e renderização GDI *double-buffered* do card flutuante
+- `tray.go` — ícone dinâmico na bandeja do sistema, tooltip e menu de contexto
+- `win32.go` — constantes, declarações de DLLs/structs da API Win32 e utilitários GDI/DPI
 - `quota.go` — execução do comando `agy`, parsing do JSON e formatação de contagens regressivas
-- `main.go` — janela Win32, renderização GDI, ícone da bandeja e modo `--test-cli`
+- `quota_test.go` — testes unitários do parser e formatação
+
+## Licença
+
+Distribuído sob a licença [MIT](LICENSE).

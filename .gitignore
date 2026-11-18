@@ -1,5 +1,7 @@
 # Binários compilados
 *.exe
+*.exe~
+*.test
 
 # Caches locais temporários do Go
 .go-cache/

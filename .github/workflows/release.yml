@@ -28,6 +28,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Compile tests
+        run: go test -c -o /dev/null ./...
+
       - name: Build Windows binary
         run: |
           mkdir -p dist
