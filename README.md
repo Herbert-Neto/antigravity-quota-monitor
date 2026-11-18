@@ -5,127 +5,55 @@
 ![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Widget leve de monitoramento de cotas dos modelos no **Google Antigravity CLI (`agy`)** para **Windows, Linux e macOS**.
-
-Desenvolvido em **Go puro** com `CGO_ENABLED=0` e **zero dependências externas**:
-- **Windows:** usa APIs nativas Win32/GDI (`user32`, `gdi32`, `shell32`, `dwmapi`) com *System Tray* dinâmico e painel flutuante arredondado, sem WebView/Electron.
-- **Linux e macOS:** mantém o **mesmo card visual escuro** (`416px`, mesma paleta, barras semânticas e controles) servido localmente em uma janela dedicada (*app mode*), preservando o código nativo do Windows intacto via *build tags* do Go.
+Widget leve para acompanhar as cotas dos modelos no **Google Antigravity CLI (`agy`)** em **Windows, Linux e macOS**.
 
 ## Funcionalidades
 
-- **Visual consistente multiplataforma:** card escuro (`#14171F` / `#1E2430`) com largura de `416px`, ponto de status e barras de progresso coloridas conforme a cota disponível (verde `>= 50%`, amarelo `20%–49%`, vermelho `< 20%`, azul durante carregamento).
-- **Ícone / Favicon dinâmico:** no Windows altera o ícone da bandeja do sistema com resumo no *hover*; no Linux/macOS atualiza dinamicamente o favicon e o título da janela.
-- **Modos Fixado e Flutuante:**
-  - **Fixado:** permanece visível sobre outras janelas (no Windows pode ser arrastado pela barra superior).
-  - **Flutuante:** oculta automaticamente para a bandeja no Windows ao clicar fora.
-- **Grupos e janelas monitorados:** lê a saída JSON de `agy --print /usage --output-format json` exibindo todos os grupos (`Gemini Models`, `Claude and GPT models`, `Gemini 4 Argon`), barras de progresso (`5h` e `weekly`) e contagem regressiva convertida para o horário local.
-- **Atualização eficiente:** consulta o `agy` em segundo plano a cada **3 minutos** (no Windows usando `CREATE_NO_WINDOW` para não piscar terminal) e atualiza as contagens regressivas a cada **15 segundos**.
-- **Atalhos da bandeja (Windows):** clique esquerdo alterna a exibição do card; clique direito abre o menu (*Mostrar / Ocultar*, *Modo Fixado*, *Iniciar com o Windows*, *Atualizar Agora*, *Verificar atualizações*, *Sair*).
-- **Iniciar com o Sistema (Windows, Linux e macOS):** opção integrada para registrar/remover a inicialização automática no login (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run` no Windows, `~/.config/autostart/agy-quota.desktop` no Linux e `~/Library/LaunchAgents/com.herbertneto.agy-quota.plist` no macOS).
-- **Verificador de Atualizações:** consulta a API oficial de Releases do GitHub ao iniciar, a cada 6 horas ou sob demanda pelo botão/menu, avisando quando há versão mais recente e abrindo a página de download no navegador.
+- **Monitoramento por grupo e janela:** exibe as cotas disponíveis (`5h` e semanal), barras coloridas conforme o saldo e contagem regressiva no horário local.
+- **Bandeja e status rápido:** muda de cor conforme a menor cota disponível; no Windows fica na bandeja do sistema com atalho de clique para mostrar/ocultar.
+- **Modo Fixado ou Flutuante:** escolha entre manter o card sempre visível ou recolher automaticamente ao clicar fora (no Windows).
+- **Atualização automática:** consulta o saldo a cada 3 minutos em segundo plano ou sob demanda pelo botão **Atualizar**.
+- **Iniciar com o sistema:** opção integrada para abrir automaticamente no login.
+- **Aviso de novas versões:** verifica se há atualizações disponíveis e abre a página de download quando existir uma versão mais recente.
 
 ## Pré-requisitos
 
 - **Windows 10/11** (`amd64`), **Linux** (`amd64`/`arm64`) ou **macOS** (`amd64`/`arm64`)
-- **Antigravity CLI (`agy`)** instalado e autenticado (no `PATH`, em `%LOCALAPPDATA%\agy\bin\agy.exe` no Windows, ou em `~/.local/bin/agy`, `~/.agy/bin/agy`, `/opt/homebrew/bin/agy`, `/usr/local/bin/agy` no Linux/macOS)
-- **Go 1.26+** (apenas para compilar a partir do código-fonte)
+- **Antigravity CLI (`agy`)** instalado e autenticado
 
-## Como baixar e executar
+## Como baixar e usar
 
-### Baixar pronto (Windows, Linux e macOS)
+1. Acesse a aba **[Releases](https://github.com/Herbert-Neto/antigravity-quota-monitor/releases)** e baixe o arquivo do seu sistema:
+   - **Windows:** `agy-quota-windows-amd64.exe`
+   - **Linux:** `agy-quota-linux-amd64` ou `agy-quota-linux-arm64`
+   - **macOS:** `agy-quota-darwin-amd64` ou `agy-quota-darwin-arm64`
 
-Acesse a aba **Releases** do repositório e baixe o binário correspondente ao seu sistema (todos gerados automaticamente via GitHub Actions com checksums em `SHA256SUMS.txt`):
+2. **No Windows:** abra o `.exe` diretamente. Clique com o botão direito no ícone da bandeja para fixar o card, ativar **Iniciar com o Windows**, verificar atualizações ou sair.
 
-- **Windows (x64):** `agy-quota-windows-amd64.exe`
-- **Linux (x64 / ARM64):** `agy-quota-linux-amd64` / `agy-quota-linux-arm64`
-- **macOS (Intel / Apple Silicon):** `agy-quota-darwin-amd64` / `agy-quota-darwin-arm64`
-
-#### Executando no Linux ou macOS
+3. **No Linux / macOS:** dê permissão de execução e inicie pelo terminal:
 
 ```bash
 chmod +x ./agy-quota-linux-amd64
 ./agy-quota-linux-amd64
 ```
 
-*(No macOS, caso o Gatekeeper bloqueie na primeira execução de binário não assinado: `xattr -d com.apple.quarantine ./agy-quota-darwin-arm64`.)*
+*(No macOS, caso o Gatekeeper bloqueie na primeira vez: `xattr -d com.apple.quarantine ./agy-quota-darwin-arm64`.)*
 
-### Compilar a partir do código-fonte
+Para iniciar junto com o sistema no Linux/macOS, basta clicar em **Login: Off / On** no rodapé do card.
 
-#### Windows (GUI sem janela de terminal)
+## Compilar a partir do código-fonte
+
+Requer **Go 1.26+**:
 
 ```powershell
+# Windows
 go build -ldflags="-H=windowsgui -s -w" -o agy-quota.exe .
 ```
-
-#### Linux / macOS (nativo)
 
 ```bash
+# Linux / macOS
 go build -ldflags="-s -w" -o agy-quota .
 ```
-
-#### Cross-compile (gerar binários de outras plataformas)
-
-```powershell
-# Windows (a partir de qualquer SO)
-$env:CGO_ENABLED="0"; $env:GOOS="windows"; $env:GOARCH="amd64"
-go build -ldflags="-H=windowsgui -s -w" -o agy-quota.exe .
-
-# Linux x64
-$env:CGO_ENABLED="0"; $env:GOOS="linux"; $env:GOARCH="amd64"
-go build -ldflags="-s -w" -o agy-quota-linux-amd64 .
-
-# Linux ARM64
-$env:CGO_ENABLED="0"; $env:GOOS="linux"; $env:GOARCH="arm64"
-go build -ldflags="-s -w" -o agy-quota-linux-arm64 .
-
-# macOS Intel / Apple Silicon
-$env:CGO_ENABLED="0"; $env:GOOS="darwin"; $env:GOARCH="amd64"
-go build -ldflags="-s -w" -o agy-quota-darwin-amd64 .
-
-$env:CGO_ENABLED="0"; $env:GOOS="darwin"; $env:GOARCH="arm64"
-go build -ldflags="-s -w" -o agy-quota-darwin-arm64 .
-```
-
-### Modo de teste no terminal (`--test-cli`)
-
-Para testar a coleta e o parser direto no terminal em qualquer sistema operacional:
-
-```powershell
-go run . --test-cli
-```
-
-### Executar testes unitários
-
-```powershell
-go test -v ./...
-```
-
-## Iniciar automaticamente com o sistema
-
-Agora o próprio aplicativo possui controle integrado de inicialização no login:
-
-- **Windows:** clique com o botão direito no ícone da bandeja e marque **Iniciar com o Windows** (grava em `HKCU\...\Run` usando o caminho atual do executável).
-- **Linux / macOS:** clique no botão **Login: Off / On** no rodapé do card (cria/remove `~/.config/autostart/agy-quota.desktop` no Linux ou `~/Library/LaunchAgents/com.herbertneto.agy-quota.plist` no macOS).
-
-*(Alternativamente no Windows, você também pode colocar um atalho manualmente em `Win + R` -> `shell:startup`.)*
-
-## Estrutura do projeto
-
-- `go.mod` — definição do módulo Go (sem dependências externas)
-- `quota.go` — execução multiplataforma do `agy`, parsing do JSON e formatação de contagens regressivas
-- `quota_test.go` — testes unitários multiplataforma do parser, semver/updater e builders de autostart
-- `updater.go` — comparação de versão semântica e verificador de novas releases via API do GitHub
-- `autostart_common.go` — helpers multiplataforma de caminho do executável e templates `.desktop` / `.plist`
-- `autostart_windows.go` — registro de inicialização automática (`advapi32.dll`) e abertura de URL no Windows (`//go:build windows`)
-- `autostart_unix.go` — inicialização automática (XDG / LaunchAgent) e abertura de URL no Linux e macOS (`//go:build !windows`)
-- `proc_windows.go` — configuração Win32 (`CREATE_NO_WINDOW`) para ocultar janela de console (`//go:build windows`)
-- `proc_unix.go` — stub de processo para Linux e macOS (`//go:build !windows`)
-- `main.go` — entrada Windows, estado da aplicação, loops de atualização e `wndProc` (`//go:build windows`)
-- `ui.go` — cálculo de layout e renderização GDI *double-buffered* no Windows (`//go:build windows`)
-- `tray.go` — ícone dinâmico na bandeja do Windows, tooltip e menu de contexto (`//go:build windows`)
-- `win32.go` — constantes, declarações de DLLs/structs da API Win32 e utilitários GDI/DPI (`//go:build windows`)
-- `main_unix.go` — entrada Linux/macOS, servidor local, loop de atualização e abertura da janela app (`//go:build !windows`)
-- `ui_unix.go` — API local e interface HTML5/CSS3/JS do card escuro para Linux e macOS (`//go:build !windows`)
 
 ## Licença
 
