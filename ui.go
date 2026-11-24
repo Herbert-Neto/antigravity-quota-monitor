@@ -124,6 +124,7 @@ func renderCard(hdc uintptr, w, h int32) {
 	dpi := state.dpi
 	data := state.data
 	loading := state.loading
+	pendingFetch := state.pendingFetch
 	lastErr := state.lastErr
 	lastUpdated := state.lastUpdated
 	pinned := state.pinned
@@ -352,6 +353,8 @@ func renderCard(hdc uintptr, w, h int32) {
 	case lastErr != "":
 		footerText = "Falha ao consultar agy"
 		footerColor = rgb(0xE7, 0x4C, 0x3C)
+	case !lastUpdated.IsZero() && pendingFetch:
+		footerText = fmt.Sprintf("Atualizado às %s  •  Pausado (tela cheia)", lastUpdated.Format("15:04:05"))
 	case !lastUpdated.IsZero():
 		footerText = fmt.Sprintf("Atualizado às %s  •  Auto a cada 3m", lastUpdated.Format("15:04:05"))
 	}

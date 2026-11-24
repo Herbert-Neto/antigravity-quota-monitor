@@ -43,6 +43,7 @@ type appState struct {
 	dpi             int32
 	data            *UsageData
 	loading         bool
+	pendingFetch    bool
 	lastErr         string
 	lastUpdated     time.Time
 	pinned          bool
@@ -175,8 +176,18 @@ func startBackgroundLoops(hwnd uintptr) {
 		for {
 			select {
 			case <-fetchTicker.C:
-				triggerFetch()
+				triggerAutoFetch(hwnd)
 			case <-countdownTicker.C:
+				state.mu.Lock()
+				pending := state.pendingFetch
+				state.mu.Unlock()
+				if pending && !isFullscreenAppActive(hwnd) {
+					state.mu.Lock()
+					state.pendingFetch = false
+					state.mu.Unlock()
+					triggerFetch()
+					continue
+				}
 				procPostMessageW.Call(hwnd, wmAppRefresh, 0, 0)
 			case <-updateTicker.C:
 				triggerUpdateCheck(false)
@@ -259,8 +270,26 @@ func triggerUpdateCheck(manual bool) {
 	}()
 }
 
+func triggerAutoFetch(hwnd uintptr) {
+	if isFullscreenAppActive(hwnd) {
+		state.mu.Lock()
+		changed := !state.pendingFetch
+		state.pendingFetch = true
+		state.mu.Unlock()
+		if changed && hwnd != 0 {
+			procPostMessageW.Call(hwnd, wmAppRefresh, 0, 0)
+		}
+		return
+	}
+	state.mu.Lock()
+	state.pendingFetch = false
+	state.mu.Unlock()
+	triggerFetch()
+}
+
 func triggerFetch() {
 	state.mu.Lock()
+	state.pendingFetch = false
 	if state.loading {
 		state.mu.Unlock()
 		return

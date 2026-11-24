@@ -83,6 +83,14 @@ const (
 	dwmwaWindowCornerPreference = 33
 	dwmwcpRound                 = 2
 	loadLibrarySearchSystem32   = 0x00000800
+
+	qunsBusy                 = 2
+	qunsRunningD3DFullScreen = 3
+	qunsPresentationMode     = 4
+	monitorDefaultToNearest  = 2
+	gwlStyle                 = ^uintptr(15)
+	wsCaption                = 0x00C00000
+	wsMaximize               = 0x01000000
 )
 
 var (
@@ -128,6 +136,13 @@ var (
 	procDestroyIcon                   = user32.NewProc("DestroyIcon")
 	procDestroyWindow                 = user32.NewProc("DestroyWindow")
 	procFindWindowW                   = user32.NewProc("FindWindowW")
+	procGetForegroundWindow           = user32.NewProc("GetForegroundWindow")
+	procGetDesktopWindow              = user32.NewProc("GetDesktopWindow")
+	procGetShellWindow                = user32.NewProc("GetShellWindow")
+	procGetClassNameW                 = user32.NewProc("GetClassNameW")
+	procGetWindowLongW                = user32.NewProc("GetWindowLongW")
+	procMonitorFromWindow             = user32.NewProc("MonitorFromWindow")
+	procGetMonitorInfoW               = user32.NewProc("GetMonitorInfoW")
 
 	procCreateCompatibleDC     = gdi32.NewProc("CreateCompatibleDC")
 	procCreateCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
@@ -145,8 +160,9 @@ var (
 	procSetTextColor           = gdi32.NewProc("SetTextColor")
 	procCreateFontW            = gdi32.NewProc("CreateFontW")
 
-	procShellNotifyIconW = shell32.NewProc("Shell_NotifyIconW")
-	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
+	procShellNotifyIconW           = shell32.NewProc("Shell_NotifyIconW")
+	procSHQueryUserNotificationState = shell32.NewProc("SHQueryUserNotificationState")
+	procGetModuleHandleW           = kernel32.NewProc("GetModuleHandleW")
 	procLoadLibraryExW   = kernel32.NewProc("LoadLibraryExW")
 	procGetProcAddress   = kernel32.NewProc("GetProcAddress")
 )
@@ -161,6 +177,13 @@ type rect struct {
 	Top    int32
 	Right  int32
 	Bottom int32
+}
+
+type monitorInfo struct {
+	CbSize    uint32
+	RcMonitor rect
+	RcWork    rect
+	DwFlags   uint32
 }
 
 type msg struct {
@@ -395,4 +418,83 @@ func copyUTF16(dst []uint16, s string) {
 	}
 	copy(dst[:n], u16[:n])
 	dst[len(dst)-1] = 0
+}
+
+func isIgnoredFullscreenClass(className string) bool {
+	switch className {
+	case "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd":
+		return true
+	default:
+		return false
+	}
+}
+
+func isWindowRectFullscreen(winRect, monRect, _ rect, style uint32) bool {
+	if monRect.Right <= monRect.Left || monRect.Bottom <= monRect.Top {
+		return false
+	}
+	coversMonitor := winRect.Left <= monRect.Left &&
+		winRect.Top <= monRect.Top &&
+		winRect.Right >= monRect.Right &&
+		winRect.Bottom >= monRect.Bottom
+	if !coversMonitor {
+		return false
+	}
+	if (style&wsCaption) == wsCaption && (style&wsMaximize) == wsMaximize {
+		return false
+	}
+	return true
+}
+
+func isFullscreenAppActive(selfHwnd uintptr) bool {
+	if err := procSHQueryUserNotificationState.Find(); err == nil {
+		var state uint32
+		hr, _, _ := procSHQueryUserNotificationState.Call(uintptr(unsafe.Pointer(&state)))
+		if hr == 0 {
+			switch state {
+			case qunsBusy, qunsRunningD3DFullScreen, qunsPresentationMode:
+				return true
+			}
+		}
+	}
+
+	fg, _, _ := procGetForegroundWindow.Call()
+	if fg == 0 || fg == selfHwnd {
+		return false
+	}
+	desktop, _, _ := procGetDesktopWindow.Call()
+	shellWnd, _, _ := procGetShellWindow.Call()
+	if fg == desktop || fg == shellWnd {
+		return false
+	}
+
+	var classBuf [256]uint16
+	n, _, _ := procGetClassNameW.Call(fg, uintptr(unsafe.Pointer(&classBuf[0])), uintptr(len(classBuf)))
+	if n > 0 {
+		className := syscall.UTF16ToString(classBuf[:n])
+		if isIgnoredFullscreenClass(className) {
+			return false
+		}
+	}
+
+	var winRect rect
+	ret, _, _ := procGetWindowRect.Call(fg, uintptr(unsafe.Pointer(&winRect)))
+	if ret == 0 {
+		return false
+	}
+
+	hMon, _, _ := procMonitorFromWindow.Call(fg, monitorDefaultToNearest)
+	if hMon == 0 {
+		return false
+	}
+
+	var mi monitorInfo
+	mi.CbSize = uint32(unsafe.Sizeof(mi))
+	ret, _, _ = procGetMonitorInfoW.Call(hMon, uintptr(unsafe.Pointer(&mi)))
+	if ret == 0 {
+		return false
+	}
+
+	style, _, _ := procGetWindowLongW.Call(fg, gwlStyle)
+	return isWindowRectFullscreen(winRect, mi.RcMonitor, mi.RcWork, uint32(style))
 }
