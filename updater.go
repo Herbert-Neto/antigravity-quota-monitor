@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// version can be overridden at build time via -ldflags "-X main.version=v1.2.0".
-var version = "v1.2.0"
+// version can be overridden at build time via -ldflags "-X main.version=v1.2.1".
+var version = "v1.2.1"
 
 const (
 	githubLatestReleaseAPI = "https://api.github.com/repos/Herbert-Neto/antigravity-quota-monitor/releases/latest"
