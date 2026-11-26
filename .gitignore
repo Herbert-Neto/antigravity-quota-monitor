@@ -6,3 +6,6 @@
 # Caches locais temporários do Go
 .go-cache/
 .go-path/
+
+# Configuração local do ai-memory
+.ai-memory.toml
