@@ -635,7 +635,7 @@ const unixCardHTML = `<!DOCTYPE html>
       <span id="footerText" class="footer-text">Aguardando primeira leitura...</span>
       <div class="footer-actions">
         <button id="autoStartBtn" class="btn-footer" type="button" title="Iniciar automaticamente no login">Login: Off</button>
-        <button id="updateBtn" class="btn-footer" type="button" title="Verificar atualizações no GitHub">v1.2.1</button>
+        <button id="updateBtn" class="btn-footer" type="button" title="Verificar atualizações no GitHub">v1.2.2</button>
       </div>
     </footer>
   </div>
@@ -709,7 +709,7 @@ const unixCardHTML = `<!DOCTYPE html>
         updateBtnEl.classList.add('update-avail');
         updateBtnEl.title = 'Nova versão disponível — Clique para abrir no GitHub';
       } else {
-        updateBtnEl.textContent = s.version || 'v1.2.1';
+        updateBtnEl.textContent = s.version || 'v1.2.2';
         updateBtnEl.classList.remove('update-avail');
         updateBtnEl.title = 'Verificar atualizações no GitHub';
       }
