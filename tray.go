@@ -37,6 +37,13 @@ func showTrayMenu(hwnd uintptr) {
 		autoFlags |= mfUnchecked
 	}
 
+	startMinFlags := uint32(mfString)
+	if IsStartMinimizedEnabled() {
+		startMinFlags |= mfChecked
+	} else {
+		startMinFlags |= mfUnchecked
+	}
+
 	updateLabel := fmt.Sprintf("Verificar atualizações (%s)", CurrentVersion())
 	if updateInfo != nil && updateInfo.HasUpdate {
 		updateLabel = fmt.Sprintf("Nova versão disponível (%s) — Baixar", updateInfo.LatestVersion)
@@ -47,6 +54,7 @@ func showTrayMenu(hwnd uintptr) {
 	appendMenuItem(hMenu, mfString, idmToggle, "Mostrar / Ocultar")
 	appendMenuItem(hMenu, pinFlags, idmPin, "Modo Fixado")
 	appendMenuItem(hMenu, autoFlags, idmAutoStart, "Iniciar com o Windows")
+	appendMenuItem(hMenu, startMinFlags, idmStartMinimized, "Iniciar minimizado")
 	appendMenuItem(hMenu, mfString, idmRefresh, "Atualizar Agora")
 	appendMenuItem(hMenu, mfString, idmCheckUpdate, updateLabel)
 	appendMenuItem(hMenu, mfSeparator, 0, "")

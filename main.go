@@ -25,8 +25,9 @@ const (
 	idmPin         = 1002
 	idmRefresh     = 1003
 	idmExit        = 1004
-	idmAutoStart   = 1005
-	idmCheckUpdate = 1006
+	idmAutoStart      = 1005
+	idmCheckUpdate    = 1006
+	idmStartMinimized = 1007
 
 	btnNone = iota
 	btnPin
@@ -70,6 +71,7 @@ var state = &appState{
 }
 
 func main() {
+	startMinimized := IsStartMinimizedEnabled()
 	for _, arg := range os.Args[1:] {
 		switch arg {
 		case "--version", "-v":
@@ -77,9 +79,11 @@ func main() {
 			os.Exit(0)
 		case "--test-cli":
 			os.Exit(runCLI())
+		case "--minimized", "-m":
+			startMinimized = true
 		}
 	}
-	runGUI()
+	runGUI(startMinimized)
 }
 
 func runCLI() int {
@@ -102,7 +106,7 @@ func runCLI() int {
 	return 0
 }
 
-func runGUI() {
+func runGUI(startMinimized bool) {
 	runtime.LockOSThread()
 	enableDPIAwareness()
 
@@ -127,11 +131,15 @@ func runGUI() {
 
 	initialW := int32(416)
 	initialH := int32(250)
+	style := uint32(wsPopup)
+	if !startMinimized {
+		style |= wsVisible
+	}
 	hwnd, _, err := procCreateWindowExW.Call(
 		uintptr(wsExTopmost|wsExToolWindow),
 		uintptr(unsafe.Pointer(classPtr)),
 		uintptr(unsafe.Pointer(titlePtr)),
-		uintptr(wsPopup|wsVisible),
+		uintptr(style),
 		0, 0, uintptr(initialW), uintptr(initialH),
 		0, 0, hInstance, 0,
 	)
@@ -368,6 +376,16 @@ func wndProc(hwnd uintptr, uMsg uint32, wParam, lParam uintptr) uintptr {
 				setStatusNote("Início com o Windows ativado", 5*time.Second)
 			} else {
 				setStatusNote("Início com o Windows desativado", 5*time.Second)
+			}
+			procInvalidateRect.Call(hwnd, 0, 0)
+		case idmStartMinimized:
+			enabled, err := ToggleStartMinimized()
+			if err != nil {
+				setStatusNote("Erro ao salvar preferência: "+err.Error(), 6*time.Second)
+			} else if enabled {
+				setStatusNote("Início minimizado ativado", 5*time.Second)
+			} else {
+				setStatusNote("Início minimizado desativado", 5*time.Second)
 			}
 			procInvalidateRect.Call(hwnd, 0, 0)
 		case idmRefresh:
